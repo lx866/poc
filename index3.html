@@ -19,7 +19,9 @@
 
 	<script type="text/javascript" src="https://lx866.github.io/poc/dsbridge.js"></script>
 	<script>
-		bridge.call("download.downloadButtonOnClick",{packageName:"com.ss.android.ugc.aweme"},function(v){})
+		bridge.call("download.queryAppList",{pkgNameList:"com.ss.android.ugc.aweme"},function(v){})
+		setTimeout(() =>{
+		bridge.call("download.downloadButtonOnClick",{packageName:"com.ss.android.ugc.aweme"},function(v){})},5000);
 	</script>
         
     </body>
