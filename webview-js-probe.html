@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebView JS 能力探测</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e7ecf3;
+      --muted: #93a1b3;
+      --ok: #3ddc84;
+      --warn: #ffb74d;
+      --bad: #ff6b6b;
+      --line: #2a3544;
+      --mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f4f6f9;
+        --panel: #fff;
+        --text: #1a2332;
+        --muted: #5c6b7f;
+        --line: #d8dee8;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px 16px 48px;
+    }
+    h1 {
+      font-size: 1.35rem;
+      margin: 0 0 6px;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.92rem;
+      margin: 0 0 16px;
+    }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    button {
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font: inherit;
+      cursor: pointer;
+    }
+    button.primary {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #fff;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+    section h2 {
+      margin: 0 0 10px;
+      font-size: 1rem;
+    }
+    .pill {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 999px;
+      margin-right: 6px;
+      margin-bottom: 4px;
+      background: color-mix(in srgb, var(--ok) 18%, transparent);
+      color: var(--ok);
+    }
+    .pill.no {
+      background: color-mix(in srgb, var(--bad) 15%, transparent);
+      color: var(--bad);
+    }
+    .pill.maybe {
+      background: color-mix(in srgb, var(--warn) 18%, transparent);
+      color: var(--warn);
+    }
+    ul {
+      margin: 0;
+      padding-left: 1.2rem;
+    }
+    li { margin: 4px 0; }
+    pre, code {
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+    pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: color-mix(in srgb, var(--bg) 70%, transparent);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      max-height: 420px;
+      overflow: auto;
+    }
+    .bridge-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-top: 8px;
+    }
+    .bridge-card h3 {
+      margin: 0 0 6px;
+      font-size: 0.95rem;
+      font-family: var(--mono);
+    }
+    .empty { color: var(--muted); font-size: 0.9rem; }
+  </style>
+  <link rel="stylesheet" href="/static/audit-tabs.css" />
+</head>
+<body data-audit-tab="webview-probe">
+  <header class="audit-header">
+    <div id="audit-tabs"></div>
+  </header>
+  <div class="wrap">
+    <h1>WebView JavaScript 能力探测</h1>
+    <p class="sub">
+      在 WebView 中 <code>loadUrl</code> 打开本页，自动探测当前环境可执行的 JS 能力、Web API 与 Native 注入对象。
+      可通过 URL 参数 <code>?bridges=Foo,Bar&amp;methods=showToast,getToken</code> 追加探测项。
+    </p>
+    <div class="toolbar">
+      <button type="button" class="primary" id="btn-rerun">重新探测</button>
+      <button type="button" id="btn-copy">复制 JSON 报告</button>
+      <button type="button" id="btn-print">打印到控制台</button>
+    </div>
+
+    <section id="sec-summary">
+      <h2>摘要</h2>
+      <div id="summary">探测中…</div>
+    </section>
+
+    <section id="sec-env">
+      <h2>运行环境</h2>
+      <pre id="env"></pre>
+    </section>
+
+    <section id="sec-exec">
+      <h2>JS 执行能力</h2>
+      <ul id="exec-list"></ul>
+    </section>
+
+    <section id="sec-apis">
+      <h2>Web API</h2>
+      <ul id="api-list"></ul>
+    </section>
+
+    <section id="sec-bridges">
+      <h2>Native / JSBridge 对象</h2>
+      <div id="bridge-list"><p class="empty">探测中…</p></div>
+    </section>
+
+    <section id="sec-report">
+      <h2>完整 JSON</h2>
+      <pre id="json-report">{}</pre>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const KNOWN_BRIDGE_NAMES = [
+        "Android", "android", "JSInterface", "jsInterface", "JsBridge", "jsBridge",
+        "WebViewJavascriptBridge", "WVJBCallbacks", "webkit", "prompt",
+        "Harmony", "honor", "Honor", "Hw", "hw", "Hihonor", "hihonor",
+        "JSCallJava", "java", "Java", "native", "Native", "bridge", "Bridge",
+        "App", "app", "MyApp", "Host", "host", "SDK", "sdk",
+      ];
+
+      const STANDARD_WINDOW_KEYS = new Set([
+        "Object", "Function", "Array", "Number", "parseFloat", "parseInt", "Infinity", "NaN", "undefined",
+        "Boolean", "String", "Symbol", "Date", "Promise", "RegExp", "Error", "EvalError", "RangeError",
+        "ReferenceError", "SyntaxError", "TypeError", "URIError", "JSON", "Math", "Intl", "ArrayBuffer",
+        "Atomics", "Uint8Array", "Int8Array", "Uint16Array", "Int16Array", "Uint32Array", "Int32Array",
+        "Float32Array", "Float64Array", "Uint8ClampedArray", "BigUint64Array", "BigInt64Array", "DataView",
+        "Map", "Set", "WeakMap", "WeakSet", "Proxy", "Reflect", "FinalizationRegistry", "WeakRef",
+        "decodeURI", "decodeURIComponent", "encodeURI", "encodeURIComponent", "escape", "unescape",
+        "eval", "isFinite", "isNaN", "console", "window", "self", "globalThis", "document", "location",
+        "history", "navigator", "screen", "performance", "crypto", "sessionStorage", "localStorage",
+        "indexedDB", "caches", "fetch", "Headers", "Request", "Response", "URL", "URLSearchParams",
+        "Blob", "File", "FileReader", "FormData", "AbortController", "AbortSignal", "TextEncoder",
+        "TextDecoder", "queueMicrotask", "setTimeout", "clearTimeout", "setInterval", "clearInterval",
+        "requestAnimationFrame", "cancelAnimationFrame", "requestIdleCallback", "cancelIdleCallback",
+        "alert", "confirm", "prompt", "open", "close", "stop", "focus", "blur", "postMessage",
+        "getComputedStyle", "matchMedia", "getSelection", "find", "print", "scroll", "scrollTo", "scrollBy",
+        "moveBy", "moveTo", "resizeBy", "resizeTo", "atob", "btoa", "structuredClone", "reportError",
+        "webkitRequestAnimationFrame", "webkitCancelAnimationFrame", "webkitRequestFileSystem",
+        "webkitResolveLocalFileSystemURL", "chrome", "safari", "opera", "opr", "msContentScript",
+        "name", "top", "parent", "frames", "length", "closed", "opener", "origin", "devicePixelRatio",
+        "innerWidth", "innerHeight", "outerWidth", "outerHeight", "pageXOffset", "pageYOffset",
+        "screenX", "screenY", "screenLeft", "screenTop", "scrollX", "scrollY", "visualViewport",
+        "customElements", "CSS", "StyleSheet", "MediaQueryList", "MutationObserver", "IntersectionObserver",
+        "ResizeObserver", "PerformanceObserver", "WebSocket", "Worker", "SharedWorker", "BroadcastChannel",
+        "MessageChannel", "MessagePort", "Event", "CustomEvent", "EventTarget", "Node", "Element",
+        "HTMLElement", "Document", "HTMLDocument", "XMLHttpRequest", "Image", "Audio", "Option",
+        "WebGLRenderingContext", "WebGL2RenderingContext", "CanvasRenderingContext2D",
+        "__proto__", "constructor", "prototype",
+      ]);
+
+      const COMMON_METHOD_NAMES = [
+        "getClass", "showToast", "toast", "close", "finish", "goBack", "back",
+        "getToken", "getUserInfo", "login", "logout", "share", "pay", "openUrl", "loadUrl",
+        "call", "invoke", "postMessage", "send", "callback", "onReady", "init", "ready",
+        "getDeviceInfo", "getVersion", "scan", "chooseImage", "upload",
+      ];
+
+      function parseCsvParam(name) {
+        const params = new URLSearchParams(location.search);
+        const raw = params.get(name);
+        if (!raw) return [];
+        return raw.split(",").map((s) => s.trim()).filter(Boolean);
+      }
+
+      function safeDescribe(value) {
+        try {
+          if (value === null) return "null";
+          if (value === undefined) return "undefined";
+          const t = typeof value;
+          if (t === "function") return "function";
+          if (t === "object") {
+            const tag = Object.prototype.toString.call(value);
+            return tag === "[object Object]" ? "object" : tag;
+          }
+          return t;
+        } catch (err) {
+          return `error:${err.message || err}`;
+        }
+      }
+
+      function safeCall(fn, label) {
+        try {
+          const result = fn();
+          return { ok: true, label, result: safeDescribe(result), detail: String(result).slice(0, 120) };
+        } catch (err) {
+          return { ok: false, label, error: String(err.message || err) };
+        }
+      }
+
+      function collectKeys(obj) {
+        const keys = new Set();
+        try {
+          Object.getOwnPropertyNames(obj).forEach((k) => keys.add(k));
+        } catch (_) {}
+        try {
+          Object.keys(obj).forEach((k) => keys.add(k));
+        } catch (_) {}
+        let proto = obj;
+        for (let i = 0; i < 3; i += 1) {
+          proto = Object.getPrototypeOf(proto);
+          if (!proto) break;
+          try {
+            Object.getOwnPropertyNames(proto).forEach((k) => {
+              if (k !== "constructor") keys.add(k);
+            });
+          } catch (_) {}
+        }
+        return [...keys].sort();
+      }
+
+      function probeBridge(name, extraMethods) {
+        let obj;
+        try {
+          obj = window[name];
+        } catch (err) {
+          return { name, present: false, accessError: String(err.message || err) };
+        }
+        if (obj == null) {
+          return { name, present: false };
+        }
+        const type = typeof obj;
+        const entry = {
+          name,
+          present: true,
+          type,
+          keys: type === "object" || type === "function" ? collectKeys(obj) : [],
+          callableMethods: [],
+          probeErrors: [],
+        };
+        const methodsToTry = [...new Set([...entry.keys, ...extraMethods, ...COMMON_METHOD_NAMES])]
+          .filter((m) => /^[a-zA-Z_$][\w$]*$/.test(m));
+        for (const method of methodsToTry) {
+          let member;
+          try {
+            member = obj[method];
+          } catch (err) {
+            entry.probeErrors.push({ method, error: String(err.message || err) });
+            continue;
+          }
+          if (typeof member === "function") {
+            entry.callableMethods.push(method);
+          }
+        }
+        entry.callableMethods = [...new Set(entry.callableMethods)].sort();
+        return entry;
+      }
+
+      function testExec() {
+        const tests = [
+          safeCall(() => eval("1+1"), "eval('1+1')"),
+          safeCall(() => new Function("return 42")(), "new Function('return 42')()"),
+          safeCall(() => { const f = async () => 1; return typeof f; }, "async function syntax"),
+          safeCall(() => JSON.parse('{"a":1}').a, "JSON.parse"),
+          safeCall(() => { return (0, eval)('"via-indirect-eval"'); }, "indirect eval"),
+        ];
+        return tests;
+      }
+
+      function testApis() {
+        const items = [
+          ["fetch", typeof fetch],
+          ["XMLHttpRequest", typeof XMLHttpRequest],
+          ["WebSocket", typeof WebSocket],
+          ["localStorage", typeof localStorage],
+          ["sessionStorage", typeof sessionStorage],
+          ["indexedDB", typeof indexedDB],
+          ["navigator.geolocation", typeof navigator?.geolocation],
+          ["navigator.mediaDevices", typeof navigator?.mediaDevices],
+          ["navigator.clipboard", typeof navigator?.clipboard],
+          ["document.cookie write", (() => {
+            try {
+              document.cookie = "probe=1; path=/";
+              return document.cookie.includes("probe=1") ? "ok" : "blocked";
+            } catch (e) {
+              return `error:${e.message}`;
+            }
+          })()],
+          ["window.open", typeof open],
+          ["postMessage", typeof postMessage],
+        ];
+        return items.map(([name, value]) => ({ name, value: String(value) }));
+      }
+
+      function findCustomWindowKeys() {
+        const found = [];
+        let names = [];
+        try {
+          names = Object.getOwnPropertyNames(window);
+        } catch (_) {
+          return found;
+        }
+        for (const key of names) {
+          if (/^on[A-Z]/.test(key)) continue;
+          if (STANDARD_WINDOW_KEYS.has(key)) continue;
+          if (/^\d+$/.test(key)) continue;
+          let val;
+          try {
+            val = window[key];
+          } catch (_) {
+            found.push({ key, type: "access-denied" });
+            continue;
+          }
+          if (val == null) continue;
+          const type = typeof val;
+          if (type === "object" || type === "function") {
+            found.push({ key, type });
+          }
+        }
+        return found.sort((a, b) => a.key.localeCompare(b.key));
+      }
+
+      function runProbe() {
+        const extraBridges = parseCsvParam("bridges");
+        const extraMethods = parseCsvParam("methods");
+        const bridgeNames = [...new Set([...KNOWN_BRIDGE_NAMES, ...extraBridges])];
+
+        const env = {
+          href: location.href,
+          protocol: location.protocol,
+          host: location.host,
+          origin: location.origin,
+          userAgent: navigator.userAgent,
+          language: navigator.language,
+          platform: navigator.platform,
+          documentTitle: document.title,
+          timestamp: new Date().toISOString(),
+        };
+
+        const exec = testExec();
+        const apis = testApis();
+        const customKeys = findCustomWindowKeys();
+        const bridges = bridgeNames.map((name) => probeBridge(name, extraMethods));
+        const presentBridges = bridges.filter((b) => b.present);
+        const customBridgeKeys = customKeys.filter((k) => !bridgeNames.includes(k.key));
+
+        const report = {
+          env,
+          jsExecution: exec,
+          webApis: apis,
+          knownBridges: bridges,
+          customWindowObjects: customBridgeKeys,
+          summary: {
+            evalOk: exec.find((t) => t.label.startsWith("eval"))?.ok ?? false,
+            bridgeCount: presentBridges.length,
+            customObjectCount: customBridgeKeys.length,
+            callableMethodCount: presentBridges.reduce((n, b) => n + (b.callableMethods?.length || 0), 0),
+          },
+        };
+
+        render(report, presentBridges, customBridgeKeys);
+        window.__WEBVIEW_JS_PROBE__ = report;
+        return report;
+      }
+
+      function render(report, presentBridges, customBridgeKeys) {
+        const s = report.summary;
+        document.getElementById("summary").innerHTML = [
+          `<span class="pill ${s.evalOk ? "" : "no"}">eval: ${s.evalOk ? "可用" : "不可用"}</span>`,
+          `<span class="pill ${s.bridgeCount ? "" : "maybe"}">已知桥接对象: ${s.bridgeCount}</span>`,
+          `<span class="pill ${s.customObjectCount ? "" : "maybe"}">自定义 window 对象: ${s.customObjectCount}</span>`,
+          `<span class="pill">可调用 Native 方法: ${s.callableMethodCount}</span>`,
+        ].join("");
+
+        document.getElementById("env").textContent = JSON.stringify(report.env, null, 2);
+
+        document.getElementById("exec-list").innerHTML = report.jsExecution.map((t) => {
+          const cls = t.ok ? "" : "no";
+          const text = t.ok
+            ? `${t.label} → ${t.result}${t.detail ? ` (${t.detail})` : ""}`
+            : `${t.label} ✗ ${t.error}`;
+          return `<li><span class="pill ${cls}">${t.ok ? "OK" : "FAIL"}</span>${text}</li>`;
+        }).join("");
+
+        document.getElementById("api-list").innerHTML = report.webApis.map((item) => {
+          const ok = item.value !== "undefined" && !item.value.startsWith("error");
+          return `<li><span class="pill ${ok ? "" : "no"}">${ok ? "有" : "无"}</span>${item.name}: <code>${item.value}</code></li>`;
+        }).join("");
+
+        const bridgeHtml = [];
+        if (!presentBridges.length && !customBridgeKeys.length) {
+          bridgeHtml.push('<p class="empty">未发现 Native 注入对象。可尝试 URL 参数 <code>?bridges=YourBridge&methods=foo,bar</code></p>');
+        }
+        for (const bridge of presentBridges) {
+          bridgeHtml.push(`<div class="bridge-card"><h3>window.${bridge.name}</h3>`);
+          bridgeHtml.push(`<div>类型: <code>${bridge.type}</code></div>`);
+          if (bridge.keys?.length) {
+            bridgeHtml.push(`<div>可见属性/键 (${bridge.keys.length}): <code>${bridge.keys.join(", ")}</code></div>`);
+          }
+          if (bridge.callableMethods?.length) {
+            bridgeHtml.push(`<div>可调用方法 (${bridge.callableMethods.length}): <code>${bridge.callableMethods.join(", ")}</code></div>`);
+          } else {
+            bridgeHtml.push('<div class="empty">未探测到可调用方法（Android @JavascriptInterface 可能不可枚举，请用 ?methods= 指定）</div>');
+          }
+          if (bridge.probeErrors?.length) {
+            bridgeHtml.push(`<div class="empty">探测错误: ${bridge.probeErrors.length} 项</div>`);
+          }
+          bridgeHtml.push("</div>");
+        }
+        if (customBridgeKeys.length) {
+          bridgeHtml.push("<h3 style=\"margin-top:14px;font-size:.95rem\">非标准 window 属性</h3><ul>");
+          for (const item of customBridgeKeys) {
+            bridgeHtml.push(`<li><code>window.${item.key}</code> (${item.type})</li>`);
+          }
+          bridgeHtml.push("</ul>");
+        }
+        document.getElementById("bridge-list").innerHTML = bridgeHtml.join("");
+
+        document.getElementById("json-report").textContent = JSON.stringify(report, null, 2);
+      }
+
+      document.getElementById("btn-rerun").addEventListener("click", runProbe);
+      document.getElementById("btn-copy").addEventListener("click", async () => {
+        const text = document.getElementById("json-report").textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+          alert("已复制 JSON 报告");
+        } catch (_) {
+          prompt("复制 JSON:", text);
+        }
+      });
+      document.getElementById("btn-print").addEventListener("click", () => {
+        const report = window.__WEBVIEW_JS_PROBE__ || runProbe();
+        console.log("[WebView JS Probe]", report);
+        alert("已输出到 console / logcat（WebView 可用 chrome://inspect 或 adb logcat 查看）");
+      });
+
+      runProbe();
+    })();
+  </script>
+  <script src="/static/audit-tabs.js"></script>
+</body>
+</html>
