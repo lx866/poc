@@ -2,288 +2,625 @@
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
-  <title>WebView JS Bridge 探测</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebView JS 接口探测 - SootMCP</title>
   <style>
     :root {
       color-scheme: light dark;
       --bg: #0f1419;
       --panel: #1a2332;
-      --text: #e7ecf3;
-      --muted: #93a1b3;
-      --ok: #3ddc84;
-      --warn: #ffb74d;
-      --bad: #ff6b6b;
-      --line: #2a3544;
-      --accent: #2563eb;
-      --mono: ui-monospace, Menlo, Consolas, monospace;
+      --border: #2d3a4f;
+      --text: #e6edf3;
+      --muted: #8b9cb3;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --sans: system-ui, -apple-system, Segoe UI, sans-serif;
     }
     @media (prefers-color-scheme: light) {
       :root {
-        --bg: #f4f6f9;
-        --panel: #fff;
-        --text: #1a2332;
-        --muted: #5c6b7f;
-        --line: #d8dee8;
+        --bg: #f4f7fb;
+        --panel: #ffffff;
+        --border: #d8e0ea;
+        --text: #1f2937;
+        --muted: #64748b;
       }
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: system-ui, sans-serif;
+      font-family: var(--sans);
       background: var(--bg);
       color: var(--text);
       line-height: 1.5;
+      min-height: 100vh;
     }
-    .wrap { max-width: 720px; margin: 0 auto; padding: 16px 14px 40px; }
-    h1 { font-size: 1.25rem; margin: 0 0 4px; }
-    .sub { color: var(--muted); font-size: 0.88rem; margin: 0 0 14px; }
-    section {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      padding: 12px 14px;
-      margin-bottom: 10px;
+    .page-head {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 20px 20px 0;
     }
-    section h2 { margin: 0 0 8px; font-size: 0.95rem; }
-    .pill {
-      display: inline-block;
-      font-size: 0.72rem;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: color-mix(in srgb, var(--ok) 18%, transparent);
-      color: var(--ok);
+    h1 { font-size: 1.4rem; margin: 0 0 6px; }
+    .sub {
+      color: var(--muted);
+      margin: 0 0 12px;
+      font-size: 0.78rem;
+      line-height: 1.5;
     }
-    .pill.no {
-      background: color-mix(in srgb, var(--bad) 15%, transparent);
-      color: var(--bad);
+    .page-body {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 20px 40px;
     }
-    .pill.warn {
-      background: color-mix(in srgb, var(--warn) 18%, transparent);
-      color: var(--warn);
+    .btn-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 14px;
     }
     button {
-      border: 1px solid var(--line);
-      background: var(--panel);
+      padding: 6px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: transparent;
       color: var(--text);
-      border-radius: 8px;
-      padding: 10px 8px;
       font: inherit;
-      font-size: 0.85rem;
+      font-size: 0.82rem;
       cursor: pointer;
     }
-    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-    button.danger { border-color: var(--bad); color: var(--bad); }
-    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 10px 0; }
-    .row { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-    pre, code { font-family: var(--mono); font-size: 0.78rem; }
-    pre {
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-      background: color-mix(in srgb, var(--bg) 70%, transparent);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      max-height: 360px;
-      overflow: auto;
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
     }
-    #env-info { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
-    #env-info code { color: var(--text); word-break: break-all; }
-    .hint { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
+    button.primary:hover { background: var(--accent-hover); }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+    }
+    .card h2 {
+      font-size: 0.92rem;
+      margin: 0 0 10px;
+    }
+    .env-grid {
+      display: grid;
+      grid-template-columns: 90px 1fr;
+      gap: 4px 10px;
+      font-size: 0.78rem;
+    }
+    .env-grid .k { color: var(--muted); }
+    .env-grid .v {
+      font-family: var(--mono);
+      font-size: 0.74rem;
+      word-break: break-all;
+    }
+    details summary {
+      cursor: pointer;
+      font-size: 0.84rem;
+      color: var(--accent);
+    }
+    details ol {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    details code {
+      font-family: var(--mono);
+      font-size: 0.9em;
+      color: var(--text);
+    }
+    /* ---- 结果列表 ---- */
+    .iface-card {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      background: var(--bg);
+    }
+    .iface-head {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 8px;
+    }
+    .iface-name {
+      font-family: var(--mono);
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: var(--accent);
+      word-break: break-all;
+    }
+    .badge {
+      font-size: 0.68rem;
+      padding: 1px 7px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .badge.native { color: var(--ok); border-color: var(--ok); }
+    .badge.known { color: var(--warn); border-color: var(--warn); }
+    .badge.danger { color: var(--bad); border-color: var(--bad); }
+    .method-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .method {
+      font-family: var(--mono);
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--panel);
+      cursor: default;
+    }
+    .method.native { color: var(--ok); }
+    .method.js { color: var(--muted); }
+    .method.sensitive {
+      color: var(--bad);
+      border-color: var(--bad);
+      font-weight: 600;
+    }
+    .empty {
+      color: var(--muted);
+      font-size: 0.82rem;
+      text-align: center;
+      padding: 24px 8px;
+      line-height: 1.7;
+    }
+    /* ---- 弹框 ---- */
+    .modal-mask {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.62);
+      backdrop-filter: blur(2px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px;
+    }
+    .modal-mask.show { display: flex; }
+    .modal {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      width: min(720px, 100%);
+      max-height: 84vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+      animation: pop 0.16s ease-out;
+    }
+    @keyframes pop {
+      from { transform: scale(0.96); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+    .modal-head {
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+    }
+    .modal-title { flex: 1; min-width: 0; }
+    .modal-title h2 { font-size: 1rem; margin: 0 0 2px; }
+    .modal-title .meta {
+      font-size: 0.7rem;
+      color: var(--muted);
+      font-family: var(--mono);
+      word-break: break-all;
+    }
+    .modal-close {
+      border: none;
+      background: transparent;
+      font-size: 1.1rem;
+      padding: 2px 8px;
+      color: var(--muted);
+    }
+    .modal-close:hover { color: var(--text); }
+    .modal-body {
+      padding: 12px 16px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-foot {
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+      flex-wrap: wrap;
+    }
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 32px;
+      transform: translateX(-50%);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 16px;
+      font-size: 0.78rem;
+      display: none;
+      z-index: 1100;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+    .toast.show { display: block; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>WebView JS Bridge 探测</h1>
+  <div class="page-head">
+    <h1>WebView JS 接口探测</h1>
     <p class="sub">
-      荣耀小游戏 WebView · <code>Native.nativeMethod(class, op, params, id, callbackName)</code><br>
-      operation 格式 <code>default.方法名</code> · 回调 <code>{ ret, errMsg, callbackId, data }</code>
+      在目标 App 的 WebView 中加载本页面后，会自动枚举 <code>window</code> 上通过
+      <code>addJavascriptInterface</code> 注入的原生接口，并以弹框形式列出接口面（接口名 / 方法 / native 标记 / 敏感方法高亮）。
     </p>
-
-    <section>
-      <h2>环境</h2>
-      <div id="native-status"><span class="pill warn">检测中…</span></div>
-      <div id="env-info"></div>
-      <div class="hint" id="api-hint"></div>
-    </section>
-
-    <section>
-      <h2>Bridge 调用</h2>
-      <div class="grid">
-        <button type="button" class="primary" id="btn-list">枚举 API</button>
-        <button type="button" id="btn-oaid">getOAID</button>
-        <button type="button" id="btn-islogin">isLogin</button>
-        <button type="button" id="btn-userinfo">getUserInfo</button>
-        <button type="button" id="btn-login">toHonorLogin</button>
-        <button type="button" id="btn-children">isChildrenMode</button>
-        <button type="button" id="btn-report">reportEvent</button>
-        <button type="button" id="btn-endloading">endLoading</button>
-        <button type="button" id="btn-finish" class="danger">finishPage</button>
-        <button type="button" id="btn-batch">批量(安全项)</button>
-      </div>
-      <div class="row">
-        <button type="button" id="btn-copy">复制日志</button>
-        <button type="button" id="btn-clear">清空</button>
-      </div>
-    </section>
-
-    <section>
-      <h2>日志</h2>
-      <pre id="log">等待操作…</pre>
-    </section>
-
-    <section>
-      <h2>JSON</h2>
-      <pre id="report">{}</pre>
-    </section>
   </div>
+
+  <div class="page-body">
+    <div class="btn-row">
+      <button class="primary" id="btn-rescan">重新扫描并弹出</button>
+      <button id="btn-copy">复制 JSON 结果</button>
+    </div>
+
+    <div class="card">
+      <h2>运行环境</h2>
+      <div class="env-grid">
+        <span class="k">页面 URL</span><span class="v" id="env-url">-</span>
+        <span class="k">UserAgent</span><span class="v" id="env-ua">-</span>
+        <span class="k">扫描时间</span><span class="v" id="env-time">-</span>
+        <span class="k">接口数量</span><span class="v" id="env-count">-</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>扫描结果</h2>
+      <div id="page-results"><div class="empty">尚未扫描</div></div>
+    </div>
+
+    <div class="card">
+      <details>
+        <summary>使用说明与判定规则</summary>
+        <ol>
+          <li>启动 sootmcp web 服务后，本页面地址为 <code>http://&lt;host&gt;:&lt;port&gt;/webview-js-probe</code>。</li>
+          <li>通过 deeplink、URL 跳转、代理重写等方式让目标 App 的 WebView 加载本页面。</li>
+          <li>页面加载后自动扫描：遍历 <code>window</code> 自有属性，凡对象上存在 <em>native 方法</em>
+            （<code>Function.prototype.toString</code> 返回 <code>[native code]</code>）即判定为注入接口；
+            页面自定义的纯 JS 对象默认不列出。</li>
+          <li>额外探测一份常见桥名清单（AndroidBridge / JSBridge / dsBridge / WebViewJavascriptBridge 等），
+            命中但无 native 方法的会标记为「常见桥名」，多为 JS 包装桥，需人工确认。</li>
+          <li>方法名命中敏感关键词（loadUrl / open / file / exec / shell / install / sms / location / cookie 等）会以红色高亮。</li>
+          <li>URL 追加 <code>?auto=0</code> 可关闭自动弹框。</li>
+        </ol>
+      </details>
+    </div>
+  </div>
+
+  <!-- 弹框 -->
+  <div class="modal-mask" id="modal-mask">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="modal-title">
+          <h2 id="modal-heading">WebView JS 接口面</h2>
+          <div class="meta" id="modal-meta"></div>
+        </div>
+        <button class="modal-close" id="btn-close" title="关闭">&#10005;</button>
+      </div>
+      <div class="modal-body" id="modal-results"></div>
+      <div class="modal-foot">
+        <button id="btn-modal-copy">复制 JSON</button>
+        <button id="btn-modal-rescan">重新扫描</button>
+        <button class="primary" id="btn-modal-close">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
 
   <script>
   (function () {
-    var IMPL = "com.hihonor.quickgamecenter.h5.method.JSMethodImpl";
-    var seq = 0;
-    var logs = [];
-    var enumeratedApis = null;
+    'use strict';
 
-    var $log = document.getElementById("log");
-    var $report = document.getElementById("report");
-    var $status = document.getElementById("native-status");
-    var $env = document.getElementById("env-info");
-    var $hint = document.getElementById("api-hint");
+    // window 上常见的标准对象属性（值为对象且含 native 方法），扫描时排除
+    var STANDARD_OBJECT_PROPS = {
+      window: 1, self: 1, top: 1, parent: 1, frames: 1, globalThis: 1,
+      document: 1, location: 1, history: 1, navigator: 1, clientInformation: 1,
+      screen: 1, console: 1, localStorage: 1, sessionStorage: 1, applicationCache: 1,
+      indexedDB: 1, webkitIndexedDB: 1, webkitStorageInfo: 1, caches: 1, cookieStore: 1,
+      crypto: 1, performance: 1, speechSynthesis: 1, styleMedia: 1, chrome: 1, external: 1,
+      trustedTypes: 1, scheduler: 1, visualViewport: 1, navigation: 1, launchQueue: 1,
+      documentPictureInPicture: 1, sharedStorage: 1, fences: 1,
+      Math: 1, JSON: 1, Atomics: 1, Reflect: 1, Intl: 1, WebAssembly: 1, Temporal: 1,
+      menubar: 1, personalbar: 1, scrollbars: 1, statusbar: 1, toolbar: 1, locationbar: 1
+    };
 
-    function hasNative() {
-      return window.Native && typeof window.Native.nativeMethod === "function";
-    }
+    // 常见的 JS 桥命名，作为补充探测（即便被框架以纯 JS 包装也提示）
+    var KNOWN_BRIDGE_NAMES = [
+      'Android', 'android', 'AndroidBridge', 'androidBridge', 'AndroidJSInterface',
+      'JSInterface', 'jsInterface', 'JSBridge', 'JsBridge', 'jsBridge', 'jsbridge',
+      'WebViewJavascriptBridge', 'WebViewJavascriptBridgeReady', 'WebViewBridge',
+      '_JSBridge', '_jsbridge', 'WVJB', 'wvjb', 'dsBridge', 'DSBridge', '_dsbridge',
+      'native', 'Native', 'NativeBridge', 'nativeBridge', 'NativeApi', 'nativeApi',
+      'nativeObj', 'nativeInterface', 'app', 'App', 'APP', 'AppBridge', 'appBridge',
+      'bridge', 'Bridge', 'jsb', 'JSB', 'H5Bridge', 'h5Bridge', 'HybridBridge',
+      'hybrid', 'Hybrid', 'AlipayJSBridge', 'WeixinJSBridge', 'wx', 'mqq', 'QQJSBridge',
+      'x5', 'qiku', 'UC', 'uc', 'cordova', 'Cordova', 'PhoneGap', 'phonegap',
+      'Capacitor', 'capacitor', 'uni', 'plus', 'Plus', 'APICloud',
+      'flutter', 'Flutter', 'flutter_inappwebview', 'ReactNativeWebView',
+      '__REACT_NATIVE_WEBVIEW_BRIDGE__', 'JSCallback', 'Callback', 'Handler',
+      'JsHandler', 'webkitBridge', 'WebkitBridge'
+    ];
 
-    function ts() { return new Date().toLocaleTimeString(); }
+    var SENSITIVE_RE = /(loadurl|open|file|download|upload|exec|shell|cmd|command|install|uninstall|sms|sendmessage|dial|contact|location|gps|clipboard|camera|photo|album|record|screenshot|deviceinfo|imei|getdevice|token|cookie|account|login|logout|password|pay|payment|scan|qrcode|intent|startactivity|broadcast|provider|database|sql|writefile|readfile|delete|exit|finish|closeapp|navigate|browser|evaluate|javascript|setresult)/i;
 
-    function log(msg, data) {
-      logs.push({ time: new Date().toISOString(), msg: msg, data: data != null ? data : null });
-      var line = "[" + ts() + "] " + msg;
-      if (data != null) line += "\n" + JSON.stringify(data, null, 2);
-      if ($log.textContent === "等待操作…") $log.textContent = "";
-      $log.textContent += line + "\n\n";
-      $log.scrollTop = $log.scrollHeight;
-      syncReport();
-    }
+    var lastResults = [];
+    var lastScanTime = '';
 
-    function syncReport() {
-      var r = {
-        env: { href: location.href, ua: navigator.userAgent, native: hasNative() },
-        apis: enumeratedApis,
-        calls: logs.slice()
-      };
-      $report.textContent = JSON.stringify(r, null, 2);
-      window.__WEBVIEW_JS_PROBE__ = r;
-    }
+    function has(obj, key) { return Object.prototype.hasOwnProperty.call(obj, key); }
 
-    function renderEnv() {
-      if (hasNative()) {
-        $status.innerHTML = '<span class="pill">Native OK</span> window.Native.nativeMethod 可用';
-      } else {
-        $status.innerHTML = '<span class="pill no">Native 不可用</span> 请在荣耀 WebViewActivity 中打开';
-      }
-      $env.innerHTML = "URL: <code>" + location.href + "</code>";
-      syncReport();
-    }
-
-    /** 第5参数：全局函数名字符串，Native 会执行 callbackName(res) */
-    function regCallback(label) {
-      var name = "__cb_" + (++seq);
-      window[name] = function (res) {
-        log(label + " ←", res);
-        if (res && res.ret === 0) log(label + " ✓", res.data != null ? res.data : res);
-        else if (res && res.ret) log(label + " ✗ ret=" + res.ret, res.errMsg || res);
-        try { delete window[name]; } catch (e) {}
-      };
-      return name;
-    }
-
-    function nativeCall(method, params, label) {
-      if (!hasNative()) { log("ERROR: 无 Native"); return; }
-      label = label || method;
-      var cb = regCallback(label);
-      var id = String(++seq);
-      var ps = typeof params === "string" ? params : JSON.stringify(params || {});
-      log("→ default." + method, { id: id, params: ps });
-      try {
-        Native.nativeMethod("", "default." + method, ps, id, cb);
-      } catch (e1) {
-        log("重试 " + IMPL + "." + method, { err: String(e1.message || e1) });
-        try {
-          Native.nativeMethod(IMPL, method, ps, id, cb);
-        } catch (e2) {
-          log("失败", { err: String(e2.message || e2) });
-        }
-      }
-    }
-
-    function listApis() {
-      if (!hasNative()) return;
-      var cb = regCallback("getHnrJsApiList");
-      log("→ default.getHnrJsApiList");
-      var old = window[cb];
-      window[cb] = function (res) {
-        enumeratedApis = res;
-        if (res && res.data) $hint.textContent = "API: " + JSON.stringify(res.data);
-        syncReport();
-        if (old) old(res);
-      };
-      try {
-        Native.nativeMethod("", "default.getHnrJsApiList", "{}", "list1", cb);
-      } catch (e) {
-        log("枚举失败", { err: String(e.message || e) });
-      }
-    }
-
-    function batchSafe() {
-      var ops = [
-        ["getHnrJsApiList", {}],
-        ["getOAID", {}],
-        ["isLogin", { toLogin: false }],
-        ["isChildrenMode", {}],
-        ["endLoading", {}]
-      ];
-      var i = 0;
-      log("批量开始", null);
-      (function next() {
-        if (i >= ops.length) { log("批量结束", null); return; }
-        var op = ops[i++];
-        nativeCall(op[0], op[1]);
-        setTimeout(next, 700);
-      })();
-    }
-
-    document.getElementById("btn-list").onclick = listApis;
-    document.getElementById("btn-oaid").onclick = function () { nativeCall("getOAID", {}); };
-    document.getElementById("btn-islogin").onclick = function () { nativeCall("isLogin", { toLogin: false }); };
-    document.getElementById("btn-userinfo").onclick = function () { nativeCall("getUserInfo", { isRefresh: false }); };
-    document.getElementById("btn-login").onclick = function () { nativeCall("toHonorLogin", {}); };
-    document.getElementById("btn-children").onclick = function () { nativeCall("isChildrenMode", {}); };
-    document.getElementById("btn-report").onclick = function () {
-      nativeCall("reportEvent", {
-        eventId: "webview_js_probe",
-        args: JSON.stringify({ page: location.href, t: Date.now() }),
-        isTimely: true
+    function escapeHtml(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
       });
-    };
-    document.getElementById("btn-endloading").onclick = function () { nativeCall("endLoading", {}); };
-    document.getElementById("btn-finish").onclick = function () {
-      if (confirm("关闭 WebView？")) nativeCall("finishPage", {});
-    };
-    document.getElementById("btn-batch").onclick = batchSafe;
-    document.getElementById("btn-clear").onclick = function () {
-      logs = []; $log.textContent = "等待操作…"; syncReport();
-    };
-    document.getElementById("btn-copy").onclick = function () {
-      var t = $log.textContent;
-      if (navigator.clipboard) navigator.clipboard.writeText(t).catch(function () { prompt("复制:", t); });
-      else prompt("复制:", t);
-    };
+    }
 
-    renderEnv();
-    if (hasNative()) setTimeout(listApis, 500);
+    function isNativeCodeFn(fn) {
+      try {
+        return /\{\s*\[native code\]\s*\}/.test(Function.prototype.toString.call(fn));
+      } catch (e) { return false; }
+    }
+
+    // 收集对象自身及原型链上的函数属性；用属性描述符取值，避免触发 getter 副作用
+    function collectMethods(target) {
+      var out = [];
+      var seen = {};
+      var cur = target;
+      var depth = 0;
+      while (cur && depth < 3) {
+        if (cur === Object.prototype || cur === Function.prototype) { break; }
+        var names;
+        try { names = Object.getOwnPropertyNames(cur); } catch (e) { break; }
+        for (var i = 0; i < names.length; i++) {
+          var n = names[i];
+          if (n === 'constructor' || n === 'getClass' || has(seen, n)) { continue; }
+          seen[n] = 1;
+          var desc;
+          try { desc = Object.getOwnPropertyDescriptor(cur, n); } catch (e2) { continue; }
+          if (!desc || !('value' in desc)) { continue; }
+          if (typeof desc.value === 'function') {
+            out.push({
+              name: n,
+              native: isNativeCodeFn(desc.value),
+              sensitive: SENSITIVE_RE.test(n)
+            });
+          }
+        }
+        try { cur = Object.getPrototypeOf(cur); } catch (e3) { break; }
+        depth++;
+      }
+      return out;
+    }
+
+    function scanInterfaces() {
+      var found = {};
+      var order = [];
+
+      function consider(name, source) {
+        if (has(found, name)) { return; }
+        if (source === 'window-scan' && STANDARD_OBJECT_PROPS[name]) { return; }
+        var value;
+        try { value = window[name]; } catch (e) { return; }
+        if (!value || typeof value !== 'object') { return; }
+        try {
+          if (value === window || value === window.top || value === window.parent) { return; }
+        } catch (e2) { /* 忽略跨域访问异常 */ }
+        var methods = collectMethods(value);
+        if (!methods.length) { return; }
+        var nativeCount = 0;
+        for (var i = 0; i < methods.length; i++) { if (methods[i].native) { nativeCount++; } }
+        // window 扫描要求至少一个 native 方法；常见桥名探测则放宽（JS 桥也提示）
+        if (source === 'window-scan' && nativeCount === 0) { return; }
+        found[name] = { name: name, source: source, methods: methods, nativeCount: nativeCount };
+        order.push(name);
+      }
+
+      var names;
+      try {
+        names = Object.getOwnPropertyNames(window);
+      } catch (e) {
+        names = [];
+        for (var k in window) { names.push(k); }
+      }
+      var i;
+      for (i = 0; i < names.length; i++) { consider(names[i], 'window-scan'); }
+      for (i = 0; i < KNOWN_BRIDGE_NAMES.length; i++) { consider(KNOWN_BRIDGE_NAMES[i], 'known-name'); }
+
+      // iOS WKWebView 风格: webkit.messageHandlers.<name>.postMessage
+      try {
+        if (window.webkit && window.webkit.messageHandlers && !has(found, 'webkit.messageHandlers')) {
+          var handlers = window.webkit.messageHandlers;
+          var hNames = Object.getOwnPropertyNames(handlers);
+          var ms = [];
+          for (i = 0; i < hNames.length; i++) {
+            var h = handlers[hNames[i]];
+            if (h && typeof h.postMessage === 'function') {
+              ms.push({
+                name: hNames[i] + '.postMessage',
+                native: isNativeCodeFn(h.postMessage),
+                sensitive: SENSITIVE_RE.test(hNames[i])
+              });
+            }
+          }
+          if (ms.length) {
+            found['webkit.messageHandlers'] = {
+              name: 'webkit.messageHandlers', source: 'ios-webkit', methods: ms, nativeCount: ms.length
+            };
+            order.push('webkit.messageHandlers');
+          }
+        }
+      } catch (e4) { /* 无 webkit 环境 */ }
+
+      var list = [];
+      for (i = 0; i < order.length; i++) { list.push(found[order[i]]); }
+      list.sort(function (a, b) {
+        if (b.nativeCount !== a.nativeCount) { return b.nativeCount - a.nativeCount; }
+        return a.name < b.name ? -1 : 1;
+      });
+      return list;
+    }
+
+    function renderResultHtml(list) {
+      if (!list.length) {
+        return '<div class="empty">未发现注入的 JS 接口。<br />' +
+          '可能原因：目标 WebView 未调用 addJavascriptInterface，' +
+          '或注入发生在页面加载之后 —— 可稍后点击「重新扫描」。</div>';
+      }
+      var html = '';
+      for (var i = 0; i < list.length; i++) {
+        var it = list[i];
+        var sens = 0;
+        var j;
+        for (j = 0; j < it.methods.length; j++) { if (it.methods[j].sensitive) { sens++; } }
+        html += '<div class="iface-card"><div class="iface-head">';
+        html += '<span class="iface-name">window.' + escapeHtml(it.name) + '</span>';
+        html += '<span class="badge">' + it.methods.length + ' 方法</span>';
+        html += '<span class="badge native">' + it.nativeCount + ' native</span>';
+        if (it.source === 'known-name') { html += '<span class="badge known">常见桥名</span>'; }
+        if (it.source === 'ios-webkit') { html += '<span class="badge known">iOS WebKit</span>'; }
+        if (sens > 0) { html += '<span class="badge danger">' + sens + ' 敏感</span>'; }
+        html += '</div><div class="method-list">';
+        for (j = 0; j < it.methods.length; j++) {
+          var m = it.methods[j];
+          var cls = 'method' + (m.native ? ' native' : ' js') + (m.sensitive ? ' sensitive' : '');
+          var tip = (m.native ? 'native 实现（原生注入）' : 'JS 实现') + (m.sensitive ? '，命中敏感关键词' : '');
+          html += '<span class="' + cls + '" title="' + tip + '">' + escapeHtml(m.name) + '()</span>';
+        }
+        html += '</div></div>';
+      }
+      return html;
+    }
+
+    function buildReport() {
+      return {
+        url: location.href,
+        userAgent: navigator.userAgent,
+        timestamp: lastScanTime,
+        interfaceCount: lastResults.length,
+        interfaces: lastResults
+      };
+    }
+
+    function refreshView() {
+      document.getElementById('env-url').textContent = location.href;
+      document.getElementById('env-ua').textContent = navigator.userAgent;
+      document.getElementById('env-time').textContent = lastScanTime;
+      document.getElementById('env-count').textContent = String(lastResults.length);
+      var html = renderResultHtml(lastResults);
+      document.getElementById('page-results').innerHTML = html;
+      document.getElementById('modal-results').innerHTML = html;
+      document.getElementById('modal-meta').textContent =
+        '共 ' + lastResults.length + ' 个接口 · ' + lastScanTime;
+    }
+
+    function scan() {
+      lastResults = scanInterfaces();
+      lastScanTime = new Date().toLocaleString();
+      refreshView();
+    }
+
+    function openModal() {
+      document.getElementById('modal-mask').classList.add('show');
+    }
+
+    function closeModal() {
+      document.getElementById('modal-mask').classList.remove('show');
+    }
+
+    function showToast(msg) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(function () { t.classList.remove('show'); }, 1800);
+    }
+
+    function copyText(text) {
+      function fallback() {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { /* 忽略 */ }
+        document.body.removeChild(ta);
+        showToast(ok ? '已复制 JSON 结果' : '复制失败，请查看页内结果');
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(
+          function () { showToast('已复制 JSON 结果'); },
+          fallback
+        );
+      } else {
+        fallback();
+      }
+    }
+
+    function bindEvents() {
+      document.getElementById('btn-rescan').addEventListener('click', function () {
+        scan();
+        openModal();
+      });
+      document.getElementById('btn-copy').addEventListener('click', function () {
+        copyText(JSON.stringify(buildReport(), null, 2));
+      });
+      document.getElementById('btn-close').addEventListener('click', closeModal);
+      document.getElementById('btn-modal-close').addEventListener('click', closeModal);
+      document.getElementById('btn-modal-rescan').addEventListener('click', scan);
+      document.getElementById('btn-modal-copy').addEventListener('click', function () {
+        copyText(JSON.stringify(buildReport(), null, 2));
+      });
+      document.getElementById('modal-mask').addEventListener('click', function (e) {
+        if (e.target === this) { closeModal(); }
+      });
+    }
+
+    function shouldAutoOpen() {
+      try {
+        return !/(?:\?|&)auto=0(?:&|$)/.test(location.search);
+      } catch (e) { return true; }
+    }
+
+    function beacon(stage) {
+      try {
+        var q = 'stage=' + stage
+          + '&ts=' + Date.now()
+          + '&href=' + encodeURIComponent(location.href)
+          + '&ifaces=' + lastResults.length
+          + '&ua=' + encodeURIComponent(navigator.userAgent);
+        new Image().src = 'http://127.0.0.1:8099/probe-hit?' + q;
+      } catch (e) { /* beacon 失败不影响页面 */ }
+    }
+
+    bindEvents();
+    scan();
+    beacon('load');
+    if (shouldAutoOpen()) {
+      openModal();
+      // 部分 App 在 onPageFinished 之后才注入接口，延迟重扫一次并刷新展示
+      setTimeout(scan, 1500);
+      setTimeout(function () { beacon('rescan'); }, 1600);
+    }
   })();
   </script>
 </body>
