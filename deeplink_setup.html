@@ -16,8 +16,9 @@ a{display:block;margin:24px auto;padding:16px;background:#1f6feb;color:#fff;text
 <a id="setupLink" href="#">Tap if not redirected</a>
 <script>
 (function(){
-  var base = 'hiboard://com.huawei.intelligent/shortVideo';
-  var setup = base + '?page_key=shortvideo&page_tab=VIDEOS';
+  //var base = 'hiboard://com.huawei.intelligent/shortVideo';
+  //var setup = base + '?page_key=shortvideo&page_tab=VIDEOS';
+  var setup = 'hiboard://com.huawei.intelligent/news?tabKey=RECOMMEND';
   var link = document.getElementById('setupLink');
   link.href = setup;
   setTimeout(function(){ location.href = setup; }, 600);
