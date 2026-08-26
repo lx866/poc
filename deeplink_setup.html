@@ -17,8 +17,8 @@ a{display:block;margin:24px auto;padding:16px;background:#1f6feb;color:#fff;text
 <script>
 (function(){
   var base = 'hiboard://com.huawei.intelligent/shortVideo';
+  var setup = base + '?page_key=shortvideo&page_tab=VIDEOS';
   var link = document.getElementById('setupLink');
-  var setup = base;
   link.href = setup;
   setTimeout(function(){ location.href = setup; }, 600);
 })();
