@@ -19,6 +19,10 @@
     .bad { color: #c00; }
     .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     code { font-size: 0.92em; }
+    .hint { font-size: 13px; color: #666; }
+    @media (prefers-color-scheme: dark) {
+      .hint { color: #aaa; }
+    }
   </style>
 </head>
 <body>
@@ -30,11 +34,13 @@
 
   <h2>调用</h2>
   <div class="row">
-    <button type="button" onclick="callUser('baseinfo')">user.baseinfo</button>
+    <button type="button" onclick="callUser('isLogin')">user.isLogin</button>
     <button type="button" onclick="callUser('info')">user.info</button>
-    <button type="button" onclick="callBoth()">依次调用两者</button>
+    <button type="button" onclick="callUser('baseinfo')">user.baseinfo</button>
+    <button type="button" onclick="callAll()">依次 isLogin → info → baseinfo</button>
     <button type="button" onclick="clearLog()">清空日志</button>
   </div>
+  <p class="hint"><strong>code:400</strong> 不是 RPC 格式错误，而是 Native 返回「无 BaseUserInfo」——通常表示<strong>云音乐未登录</strong>或 session 为空。请先在本机云音乐 App 登录后再试 <code>baseinfo</code>；<code>info</code> / <code>isLogin</code> 在未登录时也应正常返回。</p>
   <p>RPC 格式：<code>cmBridge.sendMsg(JSON.stringify({ class, method, params, seq }))</code></p>
   <p>Native 回调：<code>window.MNBCallback(seq, objectId, resultStr, metaJson)</code></p>
   <p>自动模式 hash：<code>#auto</code>、<code>#auto-baseinfo</code>、<code>#auto-info</code></p>
@@ -47,7 +53,7 @@
     var pending = Object.create(null);
     var logLines = [];
 
-    function log(msg) {
+    function log(msg, cls) {
       var line = new Date().toISOString().slice(11, 19) + ' ' + msg;
       logLines.push(line);
       document.getElementById('rpc-log').textContent = logLines.join('\n');
@@ -65,6 +71,24 @@
       try { return JSON.parse(raw); } catch (e) { return raw; }
     }
 
+    function extractCode(meta, result) {
+      if (meta && meta.code != null) return meta.code;
+      if (result && result.code != null) return result.code;
+      if (meta && meta.params && meta.params.code != null) return meta.params.code;
+      if (result && result.params && result.params.code != null) return result.params.code;
+      return null;
+    }
+
+    function interpretCode(code, method) {
+      if (code == null) return null;
+      if (code === 200 || code === 0) return 'OK';
+      if (code === 400 && method === 'baseinfo') {
+        return '无 BaseUserInfo（ILoginService.getBaseUserInfo() 为 null）→ 请先登录云音乐';
+      }
+      if (code === 400) return '业务错误 400（handler 主动返回）';
+      return 'code=' + code;
+    }
+
     function describeBridge() {
       var el = document.getElementById('bridge-status');
       var lines = [];
@@ -79,25 +103,28 @@
       return hasCm && typeof cmBridge.sendMsg === 'function';
     }
 
-    function formatResponse(seq, objectId, resultStr, metaRaw) {
+    function formatResponse(seq, objectId, resultStr, metaRaw, method) {
       var meta = tryParseJson(metaRaw);
       var result = tryParseJson(resultStr);
+      var code = extractCode(meta, result);
       var lines = [];
-      lines.push('--- MNBCallback seq=' + seq + ' ---');
+      lines.push('--- MNBCallback seq=' + seq + ' (' + (method || '?') + ') ---');
+      if (code != null) {
+        var hint = interpretCode(code, method);
+        lines.push('>>> code: ' + code + (hint ? ' — ' + hint : ''));
+      }
       lines.push('objectId: ' + JSON.stringify(objectId));
       lines.push('resultStr: ' + (typeof resultStr === 'string' ? resultStr : JSON.stringify(resultStr)));
       if (result && typeof result === 'object') {
         lines.push('result (parsed): ' + JSON.stringify(result, null, 2));
       }
       lines.push('meta: ' + JSON.stringify(meta, null, 2));
-      if (meta && meta.params) {
-        lines.push('meta.params: ' + JSON.stringify(meta.params, null, 2));
-        if (meta.params.data) {
-          lines.push('>>> user data: ' + JSON.stringify(meta.params.data, null, 2));
-        }
-      }
-      if (result && result.params && result.params.data) {
-        lines.push('>>> user data: ' + JSON.stringify(result.params.data, null, 2));
+      var data = null;
+      if (meta && meta.params && meta.params.data) data = meta.params.data;
+      else if (result && result.params && result.params.data) data = result.params.data;
+      else if (meta && meta.params && typeof meta.params === 'object' && !meta.params.code) data = meta.params;
+      if (data) {
+        lines.push('>>> payload: ' + JSON.stringify(data, null, 2));
       }
       return lines.join('\n');
     }
@@ -105,7 +132,8 @@
     window.MNBCallback = function (seq, objectId, resultStr, metaJson) {
       var key = String(seq);
       var entry = pending[key];
-      var summary = formatResponse(seq, objectId, resultStr, metaJson);
+      var method = entry ? entry.method : null;
+      var summary = formatResponse(seq, objectId, resultStr, metaJson, method);
       log(summary);
       if (entry) {
         entry.done = true;
@@ -145,9 +173,10 @@
       }, 5000);
     }
 
-    function callBoth() {
-      callUser('baseinfo');
-      setTimeout(function () { callUser('info'); }, 800);
+    function callAll() {
+      callUser('isLogin');
+      setTimeout(function () { callUser('info'); }, 600);
+      setTimeout(function () { callUser('baseinfo'); }, 1200);
     }
 
     document.getElementById('meta').textContent =
@@ -158,7 +187,7 @@
 
     var hash = location.hash.replace(/^#/, '');
     if (hash === 'auto') {
-      setTimeout(callBoth, 1500);
+      setTimeout(callAll, 1500);
     } else if (hash === 'auto-baseinfo') {
       setTimeout(function () { callUser('baseinfo'); }, 1500);
     } else if (hash === 'auto-info') {
