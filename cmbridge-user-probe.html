@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>cmBridge user.baseinfo / user.info Probe</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font-family: system-ui, sans-serif; margin: 12px; line-height: 1.45; max-width: 720px; }
+    h1 { font-size: 1.15rem; margin: 0 0 8px; }
+    p { margin: 8px 0; }
+    pre { background: #f4f4f4; color: #111; padding: 10px; overflow: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; border-radius: 6px; }
+    @media (prefers-color-scheme: dark) {
+      pre { background: #1e1e1e; color: #eee; }
+    }
+    button { display: inline-block; margin: 6px 6px 6px 0; padding: 10px 14px; font-size: 14px; cursor: pointer; }
+    .ok { color: #0a0; }
+    .warn { color: #a60; }
+    .bad { color: #c00; }
+    .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    code { font-size: 0.92em; }
+  </style>
+</head>
+<body>
+  <h1>cmBridge · user.baseinfo / user.info</h1>
+  <p id="meta">loading…</p>
+
+  <h2>Bridge 状态</h2>
+  <pre id="bridge-status">(checking…)</pre>
+
+  <h2>调用</h2>
+  <div class="row">
+    <button type="button" onclick="callUser('baseinfo')">user.baseinfo</button>
+    <button type="button" onclick="callUser('info')">user.info</button>
+    <button type="button" onclick="callBoth()">依次调用两者</button>
+    <button type="button" onclick="clearLog()">清空日志</button>
+  </div>
+  <p>RPC 格式：<code>cmBridge.sendMsg(JSON.stringify({ class, method, params, seq }))</code></p>
+  <p>Native 回调：<code>window.MNBCallback(seq, objectId, resultStr, metaJson)</code></p>
+  <p>自动模式 hash：<code>#auto</code>、<code>#auto-baseinfo</code>、<code>#auto-info</code></p>
+
+  <h2>请求 / 响应</h2>
+  <pre id="rpc-log">(no calls yet)</pre>
+
+  <script>
+    var seqCounter = 1;
+    var pending = Object.create(null);
+    var logLines = [];
+
+    function log(msg) {
+      var line = new Date().toISOString().slice(11, 19) + ' ' + msg;
+      logLines.push(line);
+      document.getElementById('rpc-log').textContent = logLines.join('\n');
+      try { console.log('[cmbridge-probe] ' + msg); } catch (e) {}
+    }
+
+    function clearLog() {
+      logLines = [];
+      document.getElementById('rpc-log').textContent = '(cleared)';
+    }
+
+    function tryParseJson(raw) {
+      if (raw == null || raw === '') return null;
+      if (typeof raw === 'object') return raw;
+      try { return JSON.parse(raw); } catch (e) { return raw; }
+    }
+
+    function describeBridge() {
+      var el = document.getElementById('bridge-status');
+      var lines = [];
+      var hasCm = typeof cmBridge !== 'undefined' && cmBridge !== null;
+      lines.push('window.cmBridge: ' + (hasCm ? 'present' : 'MISSING'));
+      if (hasCm) {
+        lines.push('cmBridge.sendMsg: ' + (typeof cmBridge.sendMsg === 'function' ? 'callable' : 'NOT callable'));
+      }
+      lines.push('window.MNBCallback: ' + (typeof window.MNBCallback === 'function' ? 'installed (probe)' : 'not set yet'));
+      lines.push('MonitorBridge: ' + (typeof MonitorBridge !== 'undefined' ? 'present' : 'absent'));
+      el.textContent = lines.join('\n');
+      return hasCm && typeof cmBridge.sendMsg === 'function';
+    }
+
+    function formatResponse(seq, objectId, resultStr, metaRaw) {
+      var meta = tryParseJson(metaRaw);
+      var result = tryParseJson(resultStr);
+      var lines = [];
+      lines.push('--- MNBCallback seq=' + seq + ' ---');
+      lines.push('objectId: ' + JSON.stringify(objectId));
+      lines.push('resultStr: ' + (typeof resultStr === 'string' ? resultStr : JSON.stringify(resultStr)));
+      if (result && typeof result === 'object') {
+        lines.push('result (parsed): ' + JSON.stringify(result, null, 2));
+      }
+      lines.push('meta: ' + JSON.stringify(meta, null, 2));
+      if (meta && meta.params) {
+        lines.push('meta.params: ' + JSON.stringify(meta.params, null, 2));
+        if (meta.params.data) {
+          lines.push('>>> user data: ' + JSON.stringify(meta.params.data, null, 2));
+        }
+      }
+      if (result && result.params && result.params.data) {
+        lines.push('>>> user data: ' + JSON.stringify(result.params.data, null, 2));
+      }
+      return lines.join('\n');
+    }
+
+    window.MNBCallback = function (seq, objectId, resultStr, metaJson) {
+      var key = String(seq);
+      var entry = pending[key];
+      var summary = formatResponse(seq, objectId, resultStr, metaJson);
+      log(summary);
+      if (entry) {
+        entry.done = true;
+        entry.response = { seq: seq, objectId: objectId, resultStr: resultStr, meta: tryParseJson(metaJson) };
+        delete pending[key];
+      }
+    };
+
+    function callUser(method) {
+      if (typeof cmBridge === 'undefined' || typeof cmBridge.sendMsg !== 'function') {
+        log('ERROR: cmBridge.sendMsg unavailable');
+        alert('cmBridge.sendMsg not available — page must load inside CloudMusic WebView (Bypass1).');
+        return;
+      }
+      var seq = seqCounter++;
+      var payload = {
+        class: 'user',
+        method: method,
+        params: {},
+        seq: seq
+      };
+      var raw = JSON.stringify(payload);
+      pending[String(seq)] = { method: method, sentAt: Date.now() };
+      log('>>> sendMsg ' + raw);
+      try {
+        cmBridge.sendMsg(raw);
+        log('sendMsg invoked OK (await MNBCallback seq=' + seq + ')');
+      } catch (e) {
+        log('sendMsg threw: ' + e);
+        delete pending[String(seq)];
+      }
+      setTimeout(function () {
+        if (pending[String(seq)]) {
+          log('WARN: no MNBCallback within 5s for seq=' + seq + ' (' + method + ')');
+          delete pending[String(seq)];
+        }
+      }, 5000);
+    }
+
+    function callBoth() {
+      callUser('baseinfo');
+      setTimeout(function () { callUser('info'); }, 800);
+    }
+
+    document.getElementById('meta').textContent =
+      'UA: ' + navigator.userAgent + '\nURL: ' + location.href;
+
+    describeBridge();
+    log('probe ready — MNBCallback hooked');
+
+    var hash = location.hash.replace(/^#/, '');
+    if (hash === 'auto') {
+      setTimeout(callBoth, 1500);
+    } else if (hash === 'auto-baseinfo') {
+      setTimeout(function () { callUser('baseinfo'); }, 1500);
+    } else if (hash === 'auto-info') {
+      setTimeout(function () { callUser('info'); }, 1500);
+    }
+  </script>
+</body>
+</html>
