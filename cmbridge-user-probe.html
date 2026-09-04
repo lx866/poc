@@ -40,8 +40,8 @@
     <button type="button" onclick="callAll()">依次 isLogin → info → baseinfo</button>
     <button type="button" onclick="clearLog()">清空日志</button>
   </div>
-  <p class="hint"><strong>code:400</strong> 不是 RPC 格式错误，而是 Native 返回「无 BaseUserInfo」——通常表示<strong>云音乐未登录</strong>或 session 为空。请先在本机云音乐 App 登录后再试 <code>baseinfo</code>；<code>info</code> / <code>isLogin</code> 在未登录时也应正常返回。</p>
-  <p>RPC 格式：<code>cmBridge.sendMsg(JSON.stringify({ class, method, params, seq }))</code></p>
+  <p class="hint"><strong>code:400</strong> 常见原因：① RPC 格式错 —— <code>method</code> 必须是 <code>user.isLogin</code> 这种<strong>带点</strong>的全名，不能只写 <code>isLogin</code> 再配合 <code>class</code>；② <code>baseinfo</code> 在无登录态时 handler 也会返回 400。</p>
+  <p>RPC 格式：<code>cmBridge.sendMsg(JSON.stringify({ method: 'user.xxx', params, seq }))</code>（<code>method</code> 用 <code>module.method</code>，不要拆成 <code>class</code>+<code>method</code>）</p>
   <p>Native 回调：<code>window.MNBCallback(seq, objectId, resultStr, metaJson)</code></p>
   <p>自动模式 hash：<code>#auto</code>、<code>#auto-baseinfo</code>、<code>#auto-info</code></p>
 
@@ -83,9 +83,9 @@
       if (code == null) return null;
       if (code === 200 || code === 0) return 'OK';
       if (code === 400 && method === 'baseinfo') {
-        return '无 BaseUserInfo（ILoginService.getBaseUserInfo() 为 null）→ 请先登录云音乐';
+        return '无 BaseUserInfo 或未登录；若 isLogin 也 400 则是 RPC 格式问题';
       }
-      if (code === 400) return '业务错误 400（handler 主动返回）';
+      if (code === 400) return 'RPC 解析/分发失败，或 handler 业务错误 —— 确认 method 为 user.xxx 格式';
       return 'code=' + code;
     }
 
@@ -149,9 +149,10 @@
         return;
       }
       var seq = seqCounter++;
+      // MusicJSBridgeDispatcher.J(): non-empty `class` triggers E(method) which
+      // requires dotted "module.method" — split {class,user}+{method,isLogin} → 400.
       var payload = {
-        class: 'user',
-        method: method,
+        method: 'user.' + method,
         params: {},
         seq: seq
       };
